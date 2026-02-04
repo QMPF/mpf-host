@@ -1,0 +1,13 @@
+#pragma once
+
+// SDK paths configured at build time
+// These paths are set when host is built with MPF SDK
+
+// MPF SDK installation prefix
+#define MPF_SDK_PREFIX "@MPF_PREFIX@"
+
+// MPF SDK QML modules path (for QML import)
+#define MPF_SDK_QML_PATH "@MPF_QML_PATH@"
+
+// Set to 1 if SDK QML path was found during configuration
+#cmakedefine01 MPF_SDK_HAS_QML_PATH

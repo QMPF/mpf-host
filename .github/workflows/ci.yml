@@ -1,52 +1,152 @@
 name: CI
+
 on:
   push:
     branches: [main]
     tags: ['v*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
+  repository_dispatch:
+    types: [component-released]
+
 env:
   QT_VERSION: '6.8.3'
+  SDK_VERSION: 'v1.0.0'
+  HTTP_CLIENT_VERSION: 'v1.0.0'
+  UI_COMPONENTS_VERSION: 'v1.0.0'
+
 jobs:
-  build-linux:
-    runs-on: ubuntu-22.04
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact_suffix: linux-x64
+            arch: gcc_64
+            ext: tar.gz
+          - os: windows-latest
+            artifact_suffix: windows-x64
+            arch: mingw_64
+            ext: zip
+
+    runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
-      - uses: jurplel/install-qt-action@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.arch }}
           cache: true
-      - run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev
-      - name: Download deps
+          tools: 'tools_mingw1310'
+
+      - name: Setup MinGW (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "$IQTA_TOOLS/mingw1310_64/bin" >> $GITHUB_PATH
+
+      - name: Install deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev
+
+      - name: Download dependencies
+        shell: bash
         run: |
-          mkdir -p sdk
-          for dep in mpf-sdk mpf-http-client mpf-ui-components; do
-            curl -sL https://github.com/dyzdyz010/$dep/releases/latest/download/$dep-linux-x64.tar.gz | tar -xz -C sdk 2>/dev/null || true
-          done
-      - run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$PWD/sdk -DCMAKE_INSTALL_PREFIX=$PWD/install
-      - run: cmake --build build || true
-      - name: Package
+          mkdir -p deps
+          
+          # Download SDK
+          mkdir -p deps/mpf-sdk && cd deps/mpf-sdk
+          gh release download ${{ env.SDK_VERSION }} -R dyzdyz010/mpf-sdk -p "mpf-sdk-${{ matrix.artifact_suffix }}.${{ matrix.ext }}"
+          [[ "${{ matrix.ext }}" == "tar.gz" ]] && tar -xzf *.tar.gz || 7z x *.zip
+          rm -f *.${{ matrix.ext }}
+          cd ../..
+          
+          # Download http-client
+          mkdir -p deps/mpf-http-client && cd deps/mpf-http-client
+          gh release download ${{ env.HTTP_CLIENT_VERSION }} -R dyzdyz010/mpf-http-client -p "mpf-http-client-${{ matrix.artifact_suffix }}.${{ matrix.ext }}"
+          [[ "${{ matrix.ext }}" == "tar.gz" ]] && tar -xzf *.tar.gz || 7z x *.zip
+          rm -f *.${{ matrix.ext }}
+          cd ../..
+          
+          # Download ui-components
+          mkdir -p deps/mpf-ui-components && cd deps/mpf-ui-components
+          gh release download ${{ env.UI_COMPONENTS_VERSION }} -R dyzdyz010/mpf-ui-components -p "mpf-ui-components-${{ matrix.artifact_suffix }}.${{ matrix.ext }}"
+          [[ "${{ matrix.ext }}" == "tar.gz" ]] && tar -xzf *.tar.gz || 7z x *.zip
+          rm -f *.${{ matrix.ext }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
         run: |
-          mkdir -p pkg/plugins pkg/qml
-          cp build/plugins/*.so pkg/plugins/ 2>/dev/null || true
-          cp -r build/qml/* pkg/qml/ 2>/dev/null || true
-          cd pkg && tar -czvf ../mpf-host-linux-x64.tar.gz . || tar -czvf ../mpf-host-linux-x64.tar.gz --files-from /dev/null
-      - uses: actions/upload-artifact@v4
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
+            -DCMAKE_PREFIX_PATH="$PWD/deps/mpf-sdk;$PWD/deps/mpf-http-client;$PWD/deps/mpf-ui-components"
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cmake -B build -G "MinGW Makefiles" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$PWD/install" \
+            -DCMAKE_PREFIX_PATH="$PWD/deps/mpf-sdk;$PWD/deps/mpf-http-client;$PWD/deps/mpf-ui-components"
+
+      - name: Build
+        shell: bash
+        run: cmake --build build
+
+      - name: Install
+        shell: bash
+        run: cmake --install build
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: cd install && tar -czvf ../mpf-host-${{ matrix.artifact_suffix }}.tar.gz .
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cd install && 7z a -tzip ../mpf-host-${{ matrix.artifact_suffix }}.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: mpf-host-linux-x64
-          path: mpf-host-linux-x64.tar.gz
+          name: mpf-host-${{ matrix.artifact_suffix }}
+          path: mpf-host-${{ matrix.artifact_suffix }}.*
+
   release:
-    needs: build-linux
+    needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-      - uses: softprops/action-gh-release@v1
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
         with:
           files: artifacts/*
           generate_release_notes: true
+
+      - name: Trigger plugin builds
+        if: success()
+        run: |
+          for repo in mpf-plugin-orders mpf-plugin-rules; do
+            curl -X POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+              https://api.github.com/repos/dyzdyz010/$repo/dispatches \
+              -d '{"event_type":"host-released","client_payload":{"version":"${{ github.ref_name }}"}}'
+          done

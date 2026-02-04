@@ -1,5 +1,4 @@
 name: CI
-
 on:
   push:
     branches: [main]
@@ -19,61 +18,48 @@ jobs:
             artifact: mpf-host-linux-x64
           - os: windows-latest
             artifact: mpf-host-windows-x64
-
     runs-on: ${{ matrix.os }}
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
+      - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
           cache: true
-
       - name: Install Linux deps
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev
-
       - name: Download SDK (Linux)
         if: runner.os == 'Linux'
         run: |
-          mkdir -p sdk
-          curl -L -o sdk.tar.gz https://github.com/dyzdyz010/mpf-sdk/releases/latest/download/mpf-sdk-linux-x64.tar.gz || echo "SDK not available yet"
-          tar -xzf sdk.tar.gz -C sdk 2>/dev/null || true
-
+          mkdir -p sdk && curl -L https://github.com/dyzdyz010/mpf-sdk/releases/latest/download/mpf-sdk-linux-x64.tar.gz | tar -xz -C sdk 2>/dev/null || true
       - name: Download SDK (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path sdk
-          Invoke-WebRequest -Uri "https://github.com/dyzdyz010/mpf-sdk/releases/latest/download/mpf-sdk-windows-x64.zip" -OutFile sdk.zip -ErrorAction SilentlyContinue
-          if (Test-Path sdk.zip) { Expand-Archive -Path sdk.zip -DestinationPath sdk -Force }
-
-      - name: Configure
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=./sdk -DCMAKE_INSTALL_PREFIX=./install
-
+          try { Invoke-WebRequest "https://github.com/dyzdyz010/mpf-sdk/releases/latest/download/mpf-sdk-windows-x64.zip" -OutFile sdk.zip; Expand-Archive sdk.zip -DestinationPath sdk -Force } catch {}
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$PWD/sdk -DCMAKE_INSTALL_PREFIX=$PWD/install
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PWD/sdk" -DCMAKE_INSTALL_PREFIX="$PWD/install"
       - name: Build
         run: cmake --build build
-
       - name: Install
         run: cmake --install build
-
       - name: Package (Linux)
         if: runner.os == 'Linux'
         run: cd install && tar -czvf ../${{ matrix.artifact }}.tar.gz .
-
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cd install; 7z a -tzip ../${{ matrix.artifact }}.zip .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        run: Set-Location install; 7z a -tzip ../${{ matrix.artifact }}.zip .
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}.*
-
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')

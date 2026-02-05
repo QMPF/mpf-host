@@ -1,15 +1,18 @@
 #pragma once
 
 #include "mpf/interfaces/inavigation.h"
-#include <QHash>
-#include <QStack>
+#include <QList>
 
 class QQmlApplicationEngine;
 
 namespace mpf {
 
 /**
- * @brief Default navigation service implementation
+ * @brief Simple navigation service for Loader-based page switching
+ * 
+ * Plugins register their main page URL via registerRoute().
+ * QML uses getPageUrl() to load pages via Loader.
+ * Internal navigation within plugins uses Popup/Dialog.
  */
 class NavigationService : public QObject, public INavigation
 {
@@ -19,48 +22,37 @@ public:
     explicit NavigationService(QQmlApplicationEngine* engine, QObject* parent = nullptr);
     ~NavigationService() override;
 
-    // INavigation interface
-    Q_INVOKABLE bool push(const QString& route, const QVariantMap& params = {}) override;
-    Q_INVOKABLE bool pop() override;
-    Q_INVOKABLE void popToRoot() override;
-    Q_INVOKABLE bool replace(const QString& route, const QVariantMap& params = {}) override;
-    Q_INVOKABLE QString currentRoute() const override;
-    Q_INVOKABLE int stackDepth() const override;
-    Q_INVOKABLE bool canGoBack() const override;
+    // Route registration (called by plugins)
     Q_INVOKABLE void registerRoute(const QString& route, const QString& qmlComponent) override;
     
-    /**
-     * @brief Get the QML page URL for a route (for Loader-based navigation)
-     */
+    // Get page URL for a route (used by QML Loader)
     Q_INVOKABLE QString getPageUrl(const QString& route) const;
+    
+    // Current route tracking
+    Q_INVOKABLE QString currentRoute() const override;
+    Q_INVOKABLE void setCurrentRoute(const QString& route);
 
-    /**
-     * @brief Set the StackView object ID in QML (deprecated - using Loader now)
-     */
-    void setStackViewId(const QString& id) { m_stackViewId = id; }
+    // Legacy interface - no longer used but kept for INavigation compatibility
+    Q_INVOKABLE bool push(const QString&, const QVariantMap& = {}) override { return false; }
+    Q_INVOKABLE bool pop() override { return false; }
+    Q_INVOKABLE void popToRoot() override {}
+    Q_INVOKABLE bool replace(const QString&, const QVariantMap& = {}) override { return false; }
+    Q_INVOKABLE int stackDepth() const override { return 0; }
+    Q_INVOKABLE bool canGoBack() const override { return false; }
 
 signals:
     void navigationChanged(const QString& route, const QVariantMap& params);
     void canGoBackChanged(bool canGoBack);
 
 private:
-    QObject* stackView() const;
-    QVariant resolveComponent(const QString& route);
-
     QQmlApplicationEngine* m_engine;
-    QString m_stackViewId = "mainStackView";
+    QString m_currentRoute;
     
     struct RouteEntry {
         QString pattern;
         QString component;
     };
     QList<RouteEntry> m_routes;
-    
-    struct StackEntry {
-        QString route;
-        QVariantMap params;
-    };
-    QStack<StackEntry> m_stack;
 };
 
 } // namespace mpf

@@ -144,6 +144,7 @@ jobs:
 
       - name: Trigger plugin builds
         if: success()
+        continue-on-error: true  # Don't fail release if DISPATCH_TOKEN not configured
         run: |
           for repo in mpf-plugin-orders mpf-plugin-rules; do
             curl -X POST `

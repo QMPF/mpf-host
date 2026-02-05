@@ -12,20 +12,19 @@ NavigationService::NavigationService(QQmlApplicationEngine* engine, QObject* par
 
 NavigationService::~NavigationService() = default;
 
-void NavigationService::registerRoute(const QString& route, const QString& qmlComponent)
+void NavigationService::registerRoute(const QString& route, const QString& qmlPageUrl)
 {
-    RouteEntry entry{route, qmlComponent};
+    RouteEntry entry{route, qmlPageUrl};
     m_routes.append(entry);
-    qDebug() << "NavigationService: Registered route" << route << "->" << qmlComponent;
+    qDebug() << "NavigationService: Registered route" << route << "->" << qmlPageUrl;
 }
 
 QString NavigationService::getPageUrl(const QString& route) const
 {
-    // Find matching route and return the URL
     for (const RouteEntry& entry : m_routes) {
         if (entry.pattern == route) {
-            qDebug() << "NavigationService: getPageUrl" << route << "->" << entry.component;
-            return entry.component;
+            qDebug() << "NavigationService: getPageUrl" << route << "->" << entry.pageUrl;
+            return entry.pageUrl;
         }
     }
     

@@ -8,7 +8,7 @@ class QQmlApplicationEngine;
 namespace mpf {
 
 /**
- * @brief Simple navigation service for Loader-based page switching
+ * @brief Navigation service implementation for Loader-based page switching
  * 
  * Plugins register their main page URL via registerRoute().
  * QML uses getPageUrl() to load pages via Loader.
@@ -22,27 +22,14 @@ public:
     explicit NavigationService(QQmlApplicationEngine* engine, QObject* parent = nullptr);
     ~NavigationService() override;
 
-    // Route registration (called by plugins)
-    Q_INVOKABLE void registerRoute(const QString& route, const QString& qmlComponent) override;
-    
-    // Get page URL for a route (used by QML Loader)
-    Q_INVOKABLE QString getPageUrl(const QString& route) const;
-    
-    // Current route tracking
+    // INavigation interface
+    Q_INVOKABLE void registerRoute(const QString& route, const QString& qmlPageUrl) override;
+    Q_INVOKABLE QString getPageUrl(const QString& route) const override;
     Q_INVOKABLE QString currentRoute() const override;
-    Q_INVOKABLE void setCurrentRoute(const QString& route);
-
-    // Legacy interface - no longer used but kept for INavigation compatibility
-    Q_INVOKABLE bool push(const QString&, const QVariantMap& = {}) override { return false; }
-    Q_INVOKABLE bool pop() override { return false; }
-    Q_INVOKABLE void popToRoot() override {}
-    Q_INVOKABLE bool replace(const QString&, const QVariantMap& = {}) override { return false; }
-    Q_INVOKABLE int stackDepth() const override { return 0; }
-    Q_INVOKABLE bool canGoBack() const override { return false; }
+    Q_INVOKABLE void setCurrentRoute(const QString& route) override;
 
 signals:
     void navigationChanged(const QString& route, const QVariantMap& params);
-    void canGoBackChanged(bool canGoBack);
 
 private:
     QQmlApplicationEngine* m_engine;
@@ -50,7 +37,7 @@ private:
     
     struct RouteEntry {
         QString pattern;
-        QString component;
+        QString pageUrl;
     };
     QList<RouteEntry> m_routes;
 };

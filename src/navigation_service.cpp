@@ -55,20 +55,10 @@ bool NavigationService::push(const QString& route, const QVariantMap& params)
         }
     }
 
-    // Pre-check: try to create a component to catch QML errors
-    qDebug() << "NavigationService: Pre-checking QML component...";
-    QQmlComponent testComponent(m_engine, url);
-    if (testComponent.isError()) {
-        qWarning() << "NavigationService: QML component has errors:";
-        for (const QQmlError& error : testComponent.errors()) {
-            qWarning() << "  -" << error.toString();
-        }
-        return false;
-    }
-    if (!testComponent.isReady()) {
-        qWarning() << "NavigationService: QML component not ready, status:" << testComponent.status();
-    }
-    qDebug() << "NavigationService: QML component pre-check passed";
+    // NOTE: Pre-check removed - was causing crashes on Windows
+    // The QQmlComponent creation here may trigger module loading before
+    // all paths are properly set up, leading to timing issues.
+    // Let StackView.push() handle the loading instead.
     
     qDebug() << "NavigationService: Calling navPush...";
     

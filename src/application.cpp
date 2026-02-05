@@ -128,11 +128,23 @@ void Application::setupPaths()
 #else
         QString userHome = qEnvironmentVariable("HOME");
 #endif
-        QString defaultSdk = QDir(userHome).filePath(".mpf-sdk/current");
-        if (QDir(defaultSdk).exists() && QFile::exists(QDir(defaultSdk).filePath("bin/mpf-host.exe")) 
-            || QFile::exists(QDir(defaultSdk).filePath("bin/mpf-host"))) {
-            sdkRoot = defaultSdk;
-            qDebug() << "Auto-detected MPF SDK at:" << sdkRoot;
+        QString sdkBaseDir = QDir(userHome).filePath(".mpf-sdk");
+        QString currentPointer = QDir(sdkBaseDir).filePath("current.txt");
+        
+        // Read version from current.txt pointer file
+        if (QFile::exists(currentPointer)) {
+            QFile file(currentPointer);
+            if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QString version = QString::fromUtf8(file.readAll()).trimmed();
+                file.close();
+                if (!version.isEmpty()) {
+                    QString versionDir = QDir(sdkBaseDir).filePath(version);
+                    if (QDir(versionDir).exists()) {
+                        sdkRoot = versionDir;
+                        qDebug() << "Auto-detected MPF SDK version:" << version << "at:" << sdkRoot;
+                    }
+                }
+            }
         }
     }
     

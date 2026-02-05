@@ -88,7 +88,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DCMAKE_PREFIX_PATH="$PWD/deps/mpf-sdk;$PWD/deps/mpf-http-client;$PWD/deps/mpf-ui-components"
 
@@ -97,7 +97,7 @@ jobs:
         shell: bash
         run: |
           cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/install" \
             -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/deps/mpf-sdk;$GITHUB_WORKSPACE/deps/mpf-http-client;$GITHUB_WORKSPACE/deps/mpf-ui-components"
 

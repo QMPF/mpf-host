@@ -118,7 +118,57 @@ file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/config)
 # Copy default config files to build output
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config/ DESTINATION ${CMAKE_BINARY_DIR}/config)
 
+# ============================================
+# Development environment configuration
+# ============================================
+# Auto-detect SDK path for Qt Creator debugging
+# Priority: MPF_SDK_ROOT env var > ~/.mpf-sdk/current
+
+# Find user home directory
+if(WIN32)
+    set(USER_HOME "$ENV{USERPROFILE}")
+    string(REPLACE "\\" "/" USER_HOME "${USER_HOME}")
+else()
+    set(USER_HOME "$ENV{HOME}")
+endif()
+
+set(MPF_SDK_DEFAULT "${USER_HOME}/.mpf-sdk/current")
+
+# Check if SDK exists at default location
+if(EXISTS "${MPF_SDK_DEFAULT}/bin")
+    message(STATUS "Found MPF SDK at: ${MPF_SDK_DEFAULT}")
+    
+    # For Visual Studio: set debugger environment
+    if(MSVC)
+        set_target_properties(mpf-host PROPERTIES
+            VS_DEBUGGER_ENVIRONMENT "MPF_SDK_ROOT=${MPF_SDK_DEFAULT}\nPATH=${MPF_SDK_DEFAULT}/bin;${MPF_SDK_DEFAULT}/lib;%PATH%\nQML_IMPORT_PATH=${MPF_SDK_DEFAULT}/qml"
+        )
+    endif()
+    
+    # Generate Qt Creator environment file
+    # User can copy these to: Projects -> Run -> Environment
+    file(WRITE ${CMAKE_BINARY_DIR}/qt-creator-env.txt
+"# Qt Creator Run Environment Configuration
+# Copy these to: Projects -> Run -> Environment -> Add
+#
+# For Windows:
+MPF_SDK_ROOT=${MPF_SDK_DEFAULT}
+PATH=${MPF_SDK_DEFAULT}/bin;${MPF_SDK_DEFAULT}/lib;\${PATH}
+QML_IMPORT_PATH=${MPF_SDK_DEFAULT}/qml
+
+# If you linked plugins via mpf-dev, also add:
+# MPF_PLUGIN_PATH=<your-plugin-build>/plugins/mpf
+# QML_IMPORT_PATH=<your-plugin-build>/qml;${MPF_SDK_DEFAULT}/qml
+")
+    message(STATUS "Generated Qt Creator env file: ${CMAKE_BINARY_DIR}/qt-creator-env.txt")
+else()
+    message(STATUS "MPF SDK not found at ${MPF_SDK_DEFAULT}")
+    message(STATUS "Install SDK with: mpf-dev setup")
+endif()
+
+# ============================================
 # Install
+# ============================================
 install(TARGETS mpf-host
     RUNTIME DESTINATION bin
 )

@@ -114,34 +114,60 @@ void Application::setupPaths()
 {
     QString appDir = QCoreApplication::applicationDirPath();
     
-    // Check for MPF_SDK_ROOT environment variable (set by mpf-dev)
-    // This takes precedence over relative paths
+    // SDK detection priority:
+    // 1. MPF_SDK_ROOT environment variable (set by mpf-dev run)
+    // 2. Auto-detect ~/.mpf-sdk/current (for Qt Creator debugging)
+    // 3. Paths relative to executable (local build / installed mode)
+    
     QString sdkRoot = qEnvironmentVariable("MPF_SDK_ROOT");
     
+    // Auto-detect SDK if not explicitly set
+    if (sdkRoot.isEmpty()) {
+#ifdef Q_OS_WIN
+        QString userHome = qEnvironmentVariable("USERPROFILE");
+#else
+        QString userHome = qEnvironmentVariable("HOME");
+#endif
+        QString defaultSdk = QDir(userHome).filePath(".mpf-sdk/current");
+        if (QDir(defaultSdk).exists() && QFile::exists(QDir(defaultSdk).filePath("bin/mpf-host.exe")) 
+            || QFile::exists(QDir(defaultSdk).filePath("bin/mpf-host"))) {
+            sdkRoot = defaultSdk;
+            qDebug() << "Auto-detected MPF SDK at:" << sdkRoot;
+        }
+    }
+    
     if (!sdkRoot.isEmpty() && QDir(sdkRoot).exists()) {
-        // Running via mpf-dev: use SDK directory structure
+        // Running with SDK: use SDK directory structure
         qDebug() << "Using MPF SDK root:" << sdkRoot;
         m_pluginPath = QDir(sdkRoot).filePath("plugins");
         m_qmlPath = QDir(sdkRoot).filePath("qml");
         m_configPath = QDir(sdkRoot).filePath("config");
         
-        // Add SDK bin to library path for DLL dependencies
+        // Add SDK bin and lib to DLL search path
         QString sdkBinPath = QDir(sdkRoot).filePath("bin");
+        QString sdkLibPath = QDir(sdkRoot).filePath("lib");
+        
         if (QDir(sdkBinPath).exists()) {
             m_app->addLibraryPath(sdkBinPath);
-#ifdef Q_OS_WIN
-            // On Windows, add SDK bin to PATH for DLL dependencies
-            QByteArray currentPath = qgetenv("PATH");
-            QByteArray newPath = sdkBinPath.toLocal8Bit() + ";" + currentPath;
-            qputenv("PATH", newPath);
-            qDebug() << "Added SDK bin to PATH:" << sdkBinPath;
-#endif
+        }
+        if (QDir(sdkLibPath).exists()) {
+            m_app->addLibraryPath(sdkLibPath);
         }
         
-        // Add SDK qml to extra paths (will be overridden by linked components via QML_IMPORT_PATH)
+#ifdef Q_OS_WIN
+        // On Windows, prepend SDK bin/lib to PATH for DLL dependencies
+        // This allows Qt Creator debugging without manually setting PATH
+        QByteArray currentPath = qgetenv("PATH");
+        QByteArray newPath = sdkBinPath.toLocal8Bit() + ";" + sdkLibPath.toLocal8Bit() + ";" + currentPath;
+        qputenv("PATH", newPath);
+        qDebug() << "Added SDK to PATH:" << sdkBinPath << "+" << sdkLibPath;
+#endif
+        
+        // Add SDK qml to import paths
         m_extraQmlPaths.append(QDir(m_qmlPath).absolutePath());
     } else {
         // Local development / installed mode: use paths relative to executable
+        qDebug() << "Using local paths relative to:" << appDir;
         m_pluginPath = appDir + "/../plugins";
         m_qmlPath = appDir + "/../qml";
         m_configPath = appDir + "/../config";

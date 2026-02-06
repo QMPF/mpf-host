@@ -7,12 +7,21 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      sdk_version:
+        description: 'SDK version (empty=latest)'
+        required: false
+        default: ''
+      force_latest:
+        description: 'Force use latest dependencies'
+        type: boolean
+        default: false
   repository_dispatch:
     types: [component-released]
 
 env:
   QT_VERSION: '6.8.3'
-  SDK_VERSION: 'v1.0.2'
+  SDK_VERSION: ${{ github.event.inputs.sdk_version || github.event.client_payload.sdk_version || 'v1.0.2' }}
   HTTP_CLIENT_VERSION: 'v1.0.2'
   UI_COMPONENTS_VERSION: 'v1.0.4'
 

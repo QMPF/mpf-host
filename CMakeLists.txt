@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
 # Find dependencies
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
 
 # Set Qt policies to avoid warnings
 if(COMMAND qt_policy)
@@ -94,6 +94,7 @@ target_link_libraries(mpf-host PRIVATE
     Qt6::Gui
     Qt6::Qml
     Qt6::Quick
+    Qt6::QuickControls2
     MPF::foundation-sdk
     # UI Components - link here to ensure single heap for QML components
     $<$<TARGET_EXISTS:MPF::mpf-ui-components>:MPF::mpf-ui-components>

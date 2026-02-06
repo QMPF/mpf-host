@@ -419,4 +419,19 @@ ApplicationWindow {
         active: false
         sourceComponent: ErrorDialog {}
     }
+
+    // DEBUG: Auto-load orders page on startup to trigger crash
+    Component.onCompleted: {
+        console.log("DEBUG: Auto-loading orders page for crash testing...")
+        Qt.callLater(function() {
+            if (Navigation) {
+                var pageUrl = Navigation.getPageUrl("orders")
+                if (pageUrl) {
+                    console.log("DEBUG: Loading orders page:", pageUrl)
+                    contentLoader.loadPage(pageUrl)
+                    root.currentRoute = "orders"
+                }
+            }
+        })
+    }
 }

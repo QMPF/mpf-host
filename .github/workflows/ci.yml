@@ -42,6 +42,8 @@ jobs:
           version: ${{ env.QT_VERSION }}
           arch: ${{ matrix.arch }}
           cache: true
+          cache-key-prefix: 'qt-${{ env.QT_VERSION }}'
+          aqtversion: '==3.1.*'
           tools: ${{ runner.os == 'Windows' && 'tools_mingw1310' || '' }}
 
       - name: Setup MinGW (Windows)

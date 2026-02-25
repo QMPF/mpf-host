@@ -128,31 +128,39 @@ void Application::setupPaths()
         QString userHome = qEnvironmentVariable("HOME");
 #endif
         QString sdkBaseDir = QDir(userHome).filePath(".mpf-sdk");
-        QString currentPointer = QDir(sdkBaseDir).filePath("current.txt");
-        
-        // Read version from current.txt pointer file
-        if (QFile::exists(currentPointer)) {
-            QFile file(currentPointer);
-            if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                QString version = QString::fromUtf8(file.readAll()).trimmed();
-                file.close();
-                if (!version.isEmpty()) {
-                    QString versionDir = QDir(sdkBaseDir).filePath(version);
-                    if (QDir(versionDir).exists()) {
-                        sdkRoot = versionDir;
-                        qDebug() << "Auto-detected MPF SDK version:" << version << "at:" << sdkRoot;
-                    }
-                }
-            }
+        QString sdkCurrentDir = QDir(sdkBaseDir).filePath("current");
+
+        // Use the "current" junction/symlink directly
+        if (QDir(sdkCurrentDir).exists()) {
+            sdkRoot = sdkCurrentDir;
+            qDebug() << "Auto-detected MPF SDK at:" << sdkRoot;
         }
     }
     
     if (!sdkRoot.isEmpty() && QDir(sdkRoot).exists()) {
         // Running with SDK: use SDK directory structure
         qDebug() << "Using MPF SDK root:" << sdkRoot;
+
+        // Expose SDK root to plugins so they can locate their QML files
+        qputenv("MPF_SDK_ROOT", sdkRoot.toLocal8Bit());
         m_pluginPath = QDir(sdkRoot).filePath("plugins");
-        m_qmlPath = QDir(sdkRoot).filePath("qml");
         m_configPath = QDir(sdkRoot).filePath("config");
+
+        // QML path resolution priority:
+        // 1. MPF_QML_PATH env var (set by mpf-dev run when host is linked)
+        // 2. Local build QML (appDir/../qml, for Qt Creator debugging)
+        // 3. SDK QML (fallback)
+        QString qmlPathOverride = qEnvironmentVariable("MPF_QML_PATH");
+        QString localQmlPath = appDir + "/../qml";
+        if (!qmlPathOverride.isEmpty() && QDir(qmlPathOverride).exists()) {
+            m_qmlPath = qmlPathOverride;
+            qDebug() << "Using linked QML path (MPF_QML_PATH):" << m_qmlPath;
+        } else if (QFile::exists(localQmlPath + "/MPF/Host/Main.qml")) {
+            m_qmlPath = localQmlPath;
+            qDebug() << "Using local build QML path:" << m_qmlPath;
+        } else {
+            m_qmlPath = QDir(sdkRoot).filePath("qml");
+        }
         
         // Add SDK bin and lib to DLL search path
         QString sdkBinPath = QDir(sdkRoot).filePath("bin");
@@ -203,6 +211,53 @@ void Application::setupPaths()
         qDebug() << "Extra plugin paths (MPF_PLUGIN_PATH):" << m_extraPluginPaths;
     }
     
+    // Read dev.json for linked source components (enables Qt Creator debugging without mpf-dev run)
+    {
+#ifdef Q_OS_WIN
+        QString devHome = qEnvironmentVariable("USERPROFILE");
+#else
+        QString devHome = qEnvironmentVariable("HOME");
+#endif
+        QString devJsonPath = QDir(devHome).filePath(".mpf-sdk/dev.json");
+        QFile devJsonFile(devJsonPath);
+        if (devJsonFile.open(QIODevice::ReadOnly)) {
+            QJsonParseError parseError;
+            QJsonDocument doc = QJsonDocument::fromJson(devJsonFile.readAll(), &parseError);
+            devJsonFile.close();
+            if (parseError.error == QJsonParseError::NoError && doc.isObject()) {
+                QJsonObject root = doc.object();
+                QJsonObject components = root.value("components").toObject();
+                for (auto it = components.begin(); it != components.end(); ++it) {
+                    QJsonObject comp = it.value().toObject();
+                    if (comp.value("mode").toString() != "source")
+                        continue;
+
+                    QString libPath = comp.value("lib").toString();
+                    if (!libPath.isEmpty() && QDir(libPath).exists()) {
+                        QString absLib = QDir(libPath).absolutePath();
+                        if (!m_extraPluginPaths.contains(absLib)) {
+                            m_extraPluginPaths.append(absLib);
+#ifdef Q_OS_WIN
+                            // Prepend to PATH so Windows can find DLLs
+                            QByteArray curPath = qgetenv("PATH");
+                            qputenv("PATH", absLib.toLocal8Bit() + ";" + curPath);
+#endif
+                        }
+                    }
+
+                    QString qmlPath = comp.value("qml").toString();
+                    if (!qmlPath.isEmpty() && QDir(qmlPath).exists()) {
+                        QString absQml = QDir(qmlPath).absolutePath();
+                        if (!m_extraQmlPaths.contains(absQml)) {
+                            m_extraQmlPaths.append(absQml);
+                        }
+                    }
+                }
+                qDebug() << "Loaded dev.json component paths";
+            }
+        }
+    }
+
     qDebug() << "Plugin path:" << m_pluginPath;
     qDebug() << "QML path:" << m_qmlPath;
     qDebug() << "Config path:" << m_configPath;

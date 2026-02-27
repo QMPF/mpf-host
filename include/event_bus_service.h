@@ -40,10 +40,23 @@ public:
     // IEventBus interface - Subscribing
     Q_INVOKABLE QString subscribe(const QString& pattern,
                                   const QString& subscriberId,
+                                  EventHandler handler,
                                   const SubscriptionOptions& options = {}) override;
 
     Q_INVOKABLE bool unsubscribe(const QString& subscriptionId) override;
     Q_INVOKABLE void unsubscribeAll(const QString& subscriberId) override;
+
+    // IEventBus interface - Request/Response
+    bool registerHandler(const QString& topic,
+                         const QString& handlerId,
+                         RequestHandler handler) override;
+    bool unregisterHandler(const QString& topic) override;
+    void unregisterAllHandlers(const QString& handlerId) override;
+    std::optional<QVariantMap> request(const QString& topic,
+                                       const QVariantMap& data = {},
+                                       const QString& senderId = {},
+                                       int timeoutMs = 0) override;
+    bool hasHandler(const QString& topic) const override;
 
     // IEventBus interface - Query
     Q_INVOKABLE int subscriberCount(const QString& topic) const override;
@@ -93,6 +106,7 @@ private:
         QString id;
         QString pattern;
         QString subscriberId;
+        EventHandler handler;
         SubscriptionOptions options;
         QRegularExpression regex;
     };
@@ -103,6 +117,12 @@ private:
         qint64 lastEventTime = 0;
     };
 
+    struct RequestHandlerEntry {
+        QString topic;
+        QString handlerId;
+        RequestHandler handler;
+    };
+
     int deliverEvent(const Event& event, bool synchronous);
     QRegularExpression compilePattern(const QString& pattern) const;
     QList<const Subscription*> findMatchingSubscriptions(const QString& topic) const;
@@ -111,6 +131,7 @@ private:
     QHash<QString, Subscription> m_subscriptions;       // subscriptionId -> Subscription
     QHash<QString, QStringList> m_subscriberIndex;      // subscriberId -> [subscriptionIds]
     QHash<QString, TopicData> m_topicStats;             // topic -> stats
+    QHash<QString, RequestHandlerEntry> m_requestHandlers; // topic -> handler
 };
 
 } // namespace mpf

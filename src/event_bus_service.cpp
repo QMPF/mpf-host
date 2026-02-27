@@ -80,15 +80,27 @@ int EventBusService::deliverEvent(const Event& event, bool synchronous)
             continue;
         }
 
+        // Invoke the callback if provided
+        if (sub->handler) {
+            if (synchronous) {
+                sub->handler(event);
+            } else {
+                // Capture handler by value for async invocation
+                auto handler = sub->handler;
+                auto eventCopy = event;
+                QMetaObject::invokeMethod(this, [handler, eventCopy]() {
+                    handler(eventCopy);
+                }, Qt::QueuedConnection);
+            }
+        }
+
         notified++;
     }
 
-    // Emit signal for subscribers
+    // Emit signal for signal-based subscribers (QML etc.)
     if (synchronous) {
-        // Direct emission (blocking)
         emit eventPublished(event.topic, event.data, event.senderId);
     } else {
-        // Queued emission (async)
         QMetaObject::invokeMethod(this, [this, event]() {
             emit eventPublished(event.topic, event.data, event.senderId);
         }, Qt::QueuedConnection);
@@ -99,6 +111,7 @@ int EventBusService::deliverEvent(const Event& event, bool synchronous)
 
 QString EventBusService::subscribe(const QString& pattern,
                                     const QString& subscriberId,
+                                    EventHandler handler,
                                     const SubscriptionOptions& options)
 {
     Subscription sub;
@@ -106,6 +119,7 @@ QString EventBusService::subscribe(const QString& pattern,
     // Deep copy strings from plugin to ensure they're in host's heap
     sub.pattern = deepCopy(pattern);
     sub.subscriberId = deepCopy(subscriberId);
+    sub.handler = std::move(handler);
     sub.options = options;
     sub.regex = compilePattern(pattern);
 
@@ -244,7 +258,7 @@ bool EventBusService::matchesTopic(const QString& topic, const QString& pattern)
 
 QString EventBusService::subscribeSimple(const QString& pattern, const QString& subscriberId)
 {
-    return subscribe(pattern, subscriberId, SubscriptionOptions{});
+    return subscribe(pattern, subscriberId, nullptr, SubscriptionOptions{});
 }
 
 QVariantMap EventBusService::topicStatsAsVariant(const QString& topic) const
@@ -256,6 +270,98 @@ int EventBusService::totalSubscribers() const
 {
     QMutexLocker locker(&m_mutex);
     return m_subscriptions.size();
+}
+
+// ===== Request/Response =====
+
+bool EventBusService::registerHandler(const QString& topic,
+                                       const QString& handlerId,
+                                       RequestHandler handler)
+{
+    QMutexLocker locker(&m_mutex);
+
+    if (m_requestHandlers.contains(topic)) {
+        qWarning() << "EventBus: Handler already registered for topic:" << topic;
+        return false;
+    }
+
+    RequestHandlerEntry entry;
+    entry.topic = deepCopy(topic);
+    entry.handlerId = deepCopy(handlerId);
+    entry.handler = std::move(handler);
+    m_requestHandlers.insert(topic, std::move(entry));
+
+    qDebug() << "EventBus: Registered request handler for" << topic << "by" << handlerId;
+    return true;
+}
+
+bool EventBusService::unregisterHandler(const QString& topic)
+{
+    QMutexLocker locker(&m_mutex);
+    bool removed = m_requestHandlers.remove(topic) > 0;
+    if (removed) {
+        qDebug() << "EventBus: Unregistered request handler for" << topic;
+    }
+    return removed;
+}
+
+void EventBusService::unregisterAllHandlers(const QString& handlerId)
+{
+    QMutexLocker locker(&m_mutex);
+
+    QStringList toRemove;
+    for (auto it = m_requestHandlers.constBegin(); it != m_requestHandlers.constEnd(); ++it) {
+        if (it->handlerId == handlerId) {
+            toRemove.append(it.key());
+        }
+    }
+
+    for (const QString& topic : toRemove) {
+        m_requestHandlers.remove(topic);
+    }
+
+    if (!toRemove.isEmpty()) {
+        qDebug() << "EventBus: Unregistered all handlers for" << handlerId
+                 << "(" << toRemove.size() << "handlers)";
+    }
+}
+
+std::optional<QVariantMap> EventBusService::request(const QString& topic,
+                                                     const QVariantMap& data,
+                                                     const QString& senderId,
+                                                     int timeoutMs)
+{
+    Q_UNUSED(timeoutMs)  // Synchronous call, timeout not implemented yet
+
+    RequestHandler handler;
+    {
+        QMutexLocker locker(&m_mutex);
+        auto it = m_requestHandlers.find(topic);
+        if (it == m_requestHandlers.end()) {
+            qDebug() << "EventBus: No handler for request topic:" << topic;
+            return std::nullopt;
+        }
+        handler = it->handler;
+    }
+
+    Event event;
+    event.topic = topic;
+    event.senderId = senderId;
+    event.data = data;
+    event.timestamp = QDateTime::currentMSecsSinceEpoch();
+
+    try {
+        return deepCopy(handler(event));
+    } catch (const std::exception& e) {
+        qWarning() << "EventBus: Request handler threw exception:" << e.what();
+        return std::nullopt;
+    }
+}
+
+bool EventBusService::hasHandler(const QString& topic) const
+{
+    QMutexLocker locker(&m_mutex);
+    return m_requestHandlers.contains(topic);
 }
 
 QRegularExpression EventBusService::compilePattern(const QString& pattern) const

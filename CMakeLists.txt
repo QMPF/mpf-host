@@ -5,6 +5,16 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
+# macOS RPATH settings
+if(APPLE)
+    set(CMAKE_MACOSX_RPATH ON)
+    set(CMAKE_INSTALL_RPATH "@executable_path/../lib;@executable_path/../Frameworks")
+    set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+    set(CMAKE_BUILD_WITH_INSTALL_RPATH OFF)
+    # Allow finding libraries next to the executable during development
+    set(CMAKE_BUILD_RPATH "${CMAKE_BINARY_DIR}/lib;${CMAKE_BINARY_DIR}/plugins")
+endif()
+
 # Find dependencies
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
 

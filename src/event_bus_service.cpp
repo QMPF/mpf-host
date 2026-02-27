@@ -111,6 +111,13 @@ int EventBusService::deliverEvent(const Event& event, bool synchronous)
 
 QString EventBusService::subscribe(const QString& pattern,
                                     const QString& subscriberId,
+                                    const SubscriptionOptions& options)
+{
+    return subscribe(pattern, subscriberId, nullptr, options);
+}
+
+QString EventBusService::subscribe(const QString& pattern,
+                                    const QString& subscriberId,
                                     EventHandler handler,
                                     const SubscriptionOptions& options)
 {
@@ -258,7 +265,7 @@ bool EventBusService::matchesTopic(const QString& topic, const QString& pattern)
 
 QString EventBusService::subscribeSimple(const QString& pattern, const QString& subscriberId)
 {
-    return subscribe(pattern, subscriberId, nullptr, SubscriptionOptions{});
+    return subscribe(pattern, subscriberId, SubscriptionOptions{});
 }
 
 QVariantMap EventBusService::topicStatsAsVariant(const QString& topic) const

@@ -7,7 +7,14 @@
 #include <QMutex>
 #include <QRegularExpression>
 
+#include <functional>
+#include <optional>
+
 namespace mpf {
+
+// Callback types for C++ event handling (not part of SDK interface)
+using EventHandler = std::function<void(const Event&)>;
+using RequestHandler = std::function<QVariantMap(const Event&)>;
 
 /**
  * @brief Default event bus service implementation
@@ -37,11 +44,16 @@ public:
                                 const QVariantMap& data,
                                 const QString& senderId = {}) override;
 
-    // IEventBus interface - Subscribing (C++ only, not exposed to QML due to std::function)
+    // IEventBus interface - Subscribing (with callback)
     QString subscribe(const QString& pattern,
                       const QString& subscriberId,
                       EventHandler handler,
                       const SubscriptionOptions& options = {}) override;
+
+    // Convenience overload without callback (uses signal-based delivery)
+    QString subscribe(const QString& pattern,
+                      const QString& subscriberId,
+                      const SubscriptionOptions& options = {});
 
     Q_INVOKABLE bool unsubscribe(const QString& subscriptionId) override;
     Q_INVOKABLE void unsubscribeAll(const QString& subscriberId) override;

@@ -8,12 +8,8 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      sdk_version:
-        description: 'SDK version (empty=latest)'
-        required: false
-        default: ''
-      ui_components_version:
-        description: 'UI Components version (empty=latest)'
+      mpf_version:
+        description: 'MPF release version (empty=latest)'
         required: false
         default: ''
       auto_release:
@@ -28,27 +24,18 @@ jobs:
   resolve-versions:
     runs-on: ubuntu-latest
     outputs:
-      sdk_version: ${{ steps.resolve.outputs.sdk_version }}
-      ui_components_version: ${{ steps.resolve.outputs.ui_components_version }}
+      mpf_version: ${{ steps.resolve.outputs.mpf_version }}
     steps:
-      - name: Resolve dependency versions
+      - name: Resolve MPF version
         id: resolve
         run: |
-          if [[ -n "${{ github.event.inputs.sdk_version }}" ]]; then
-            SDK_VERSION="${{ github.event.inputs.sdk_version }}"
+          if [[ -n "${{ github.event.inputs.mpf_version }}" ]]; then
+            MPF_VERSION="${{ github.event.inputs.mpf_version }}"
           else
-            SDK_VERSION=$(gh release view -R QMPF/mpf-sdk --json tagName -q '.tagName')
+            MPF_VERSION=$(gh release view -R QMPF/mpf-release --json tagName -q '.tagName')
           fi
-          echo "sdk_version=$SDK_VERSION" >> $GITHUB_OUTPUT
-          
-          if [[ -n "${{ github.event.inputs.ui_components_version }}" ]]; then
-            UI_VERSION="${{ github.event.inputs.ui_components_version }}"
-          else
-            UI_VERSION=$(gh release view -R QMPF/mpf-ui-components --json tagName -q '.tagName')
-          fi
-          echo "ui_components_version=$UI_VERSION" >> $GITHUB_OUTPUT
-          
-          echo "Using SDK: $SDK_VERSION, UI Components: $UI_VERSION"
+          echo "mpf_version=$MPF_VERSION" >> $GITHUB_OUTPUT
+          echo "Using MPF: $MPF_VERSION"
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -91,26 +78,15 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev
 
-      - name: Download dependencies
+      - name: Download MPF
         shell: bash
         run: |
-          mkdir -p deps
-          
-          mkdir -p deps/mpf-sdk && cd deps/mpf-sdk
-          gh release download ${{ needs.resolve-versions.outputs.sdk_version }} \
-            -R QMPF/mpf-sdk \
-            -p "mpf-sdk-${{ matrix.artifact_suffix }}.${{ matrix.ext }}"
+          mkdir -p deps/mpf && cd deps/mpf
+          gh release download ${{ needs.resolve-versions.outputs.mpf_version }} \
+            -R QMPF/mpf-release \
+            -p "mpf-${{ matrix.artifact_suffix }}.${{ matrix.ext }}"
           [[ "${{ matrix.ext }}" == "tar.gz" ]] && tar -xzf *.tar.gz || 7z x *.zip
           rm -f *.${{ matrix.ext }}
-          cd ../..
-          
-          mkdir -p deps/mpf-ui-components && cd deps/mpf-ui-components
-          gh release download ${{ needs.resolve-versions.outputs.ui_components_version }} \
-            -R QMPF/mpf-ui-components \
-            -p "mpf-ui-components-${{ matrix.artifact_suffix }}.${{ matrix.ext }}"
-          [[ "${{ matrix.ext }}" == "tar.gz" ]] && tar -xzf *.tar.gz || 7z x *.zip
-          rm -f *.${{ matrix.ext }}
-          cd ../..
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -120,7 +96,7 @@ jobs:
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_INSTALL_PREFIX=$PWD/install \
-            -DCMAKE_PREFIX_PATH="$PWD/deps/mpf-sdk;$PWD/deps/mpf-ui-components"
+            -DCMAKE_PREFIX_PATH="$PWD/deps/mpf"
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
@@ -129,7 +105,7 @@ jobs:
           cmake -B build -G "MinGW Makefiles" \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/install" \
-            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/deps/mpf-sdk;$GITHUB_WORKSPACE/deps/mpf-ui-components"
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/deps/mpf"
 
       - name: Build
         shell: bash
@@ -171,18 +147,18 @@ jobs:
         run: |
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
           echo "Latest tag: $LATEST_TAG"
-          
+
           VERSION=${LATEST_TAG#v}
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
           NEW_PATCH=$((PATCH + 1))
           NEW_TAG="v${MAJOR}.${MINOR}.${NEW_PATCH}"
           echo "New tag: $NEW_TAG"
-          
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "$NEW_TAG" -m "Auto-release $NEW_TAG (triggered by upstream)"
           git push origin "$NEW_TAG"
-          
+
           echo "Pushed tag $NEW_TAG"
 
   release:
@@ -191,7 +167,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4

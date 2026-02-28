@@ -301,7 +301,17 @@ void Application::setupQmlContext()
     m_engine->addImportPath(m_qmlPath);
     m_engine->addImportPath("qrc:/");
     
-    // Add extra QML import paths from dev.json FIRST (source builds override SDK)
+    // Add SDK QML path first (lowest priority — addImportPath prepends,
+    // so paths added later end up in front and take higher priority)
+#if MPF_SDK_HAS_QML_PATH
+    QString sdkQmlPath = QStringLiteral(MPF_SDK_QML_PATH);
+    if (!sdkQmlPath.isEmpty() && QDir(sdkQmlPath).exists()) {
+        m_engine->addImportPath(sdkQmlPath);
+        qDebug() << "Added SDK QML import path (fallback):" << sdkQmlPath;
+    }
+#endif
+
+    // Add dev.json QML paths after SDK (higher priority — source builds override SDK)
     for (const QString& path : m_extraQmlPaths) {
         if (QDir(path).exists()) {
             m_engine->addImportPath(path);
@@ -310,15 +320,6 @@ void Application::setupQmlContext()
             qWarning() << "Extra QML path does not exist:" << path;
         }
     }
-
-    // Add SDK QML path AFTER dev.json paths (fallback for unlinked components)
-#if MPF_SDK_HAS_QML_PATH
-    QString sdkQmlPath = QStringLiteral(MPF_SDK_QML_PATH);
-    if (!sdkQmlPath.isEmpty() && QDir(sdkQmlPath).exists()) {
-        m_engine->addImportPath(sdkQmlPath);
-        qDebug() << "Added SDK QML import path (fallback):" << sdkQmlPath;
-    }
-#endif
     
     // Add host QML module output directory for component discovery
     QString hostQmlDir = m_qmlPath + "/MPF/Host/qml";
